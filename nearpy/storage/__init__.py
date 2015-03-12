@@ -23,4 +23,18 @@ from __future__ import absolute_import
 
 from nearpy.storage.storage import Storage
 from nearpy.storage.storage_memory import MemoryStorage
+from nearpy.storage.storage_file import FileStorage
 from nearpy.storage.storage_redis import RedisStorage
+from nearpy.storage.storage_credis import CRedisStorage
+
+
+def storage_factory(name, keyprefix="", **kwargs):
+    if name.lower() == "memory":
+        return MemoryStorage(keyprefix=keyprefix)
+    elif name.lower() == "file":
+        return FileStorage(keyprefix=keyprefix, dir=kwargs.get("dir", "./nearpy"))
+    elif name.lower() == "redis":
+        return CRedisStorage(keyprefix=keyprefix,
+                             host=kwargs.get("host", "localhost"),
+                             port=kwargs.get("port", 6379),
+                             db=kwargs.get('db', 0))

@@ -20,8 +20,7 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 
-import numpy
-import scipy
+import numpy as np
 
 from nearpy.distances.distance import Distance
 
@@ -29,12 +28,5 @@ from nearpy.distances.distance import Distance
 class EuclideanDistance(Distance):
     """ Euclidean distance """
 
-    def distance(self, x, y):
-        """
-        Computes distance measure between vectors x and y. Returns float.
-        """
-        if scipy.sparse.issparse(x):
-            return numpy.linalg.norm((x-y).toarray().ravel())
-        else:
-            return numpy.linalg.norm(x-y)
-
+    def __call__(self, query, patches):
+        return np.sqrt(np.mean((patches - query) ** 2, axis=tuple(range(1, patches.ndim))))

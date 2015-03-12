@@ -27,129 +27,269 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 
-import redis
-import json
-import numpy
-import scipy
-import pickle
+try:
+    import ujson as json
+except ImportError:
+    import json
 
+import types
+import numpy as np
+from redis import Redis
+
+from itertools import izip
 from nearpy.storage.storage import Storage
-from nearpy.utils import want_string
+from nearpy.utils import chunk
+
+# def serialize(x):
+#     if type(x) is np.ndarray:
+#         return 'nd' + x.dtype.str + '{:02}'.format(x.ndim) + str(x.shape) + x.tostring()
+
+# def deserialize(s):
+#     if s[:2] == 'nd':
+#         return s
 
 
 class RedisStorage(Storage):
     """ Storage using redis. """
 
-    def __init__(self, redis_object):
+    def __init__(self, redis_object=None, host='localhost', port=6379, db=0, keyprefix="nearpy_"):
         """ Uses specified redis object for storage. """
+        if redis_object is None:
+            redis_object = Redis(host=host, port=port, db=db)
+
         self.redis_object = redis_object
+        self.keyprefix = keyprefix
 
-    def store_vector(self, hash_name, bucket_key, v, data):
+    # def __setitem__(self, bucket_key, bucket_value):
+    #     return self.store_buckets(**{bucket_key: bucket_value})
+
+    def append_to_bucket(self, bucket_key, bucket_value):
         """
-        Stores vector and JSON-serializable data in bucket with specified key.
+        Parameters
+        ----------
+        bucket_key: str
+            key of the bucket
+        bucket_value: JSON serializable object
+            information to append to the bucket refered by `bucket_key`
+
+        Return
+        ------
+        count: int
+            number of elements added
         """
-        redis_key = 'nearpy_%s_%s' % (hash_name, bucket_key)
+        return self.append_to_buckets_from_iter([(bucket_key, bucket_value)])
 
-        val_dict = {}
+    # def store(self, buckets):
+    #     count = 0
+    #     pipeline = self.redis_object.pipeline(transaction=False)
+    #     for bucket_key, bucket_data in buckets.items():
+    #         key = self.key_prefix + bucket_key + '_'
+    #         for name, data in bucket_data.items():
+    #             pipeline.rpush(key + name, *map(json.dumps, data))
 
-        # Depending on type (sparse or not) fill value dict
-        if scipy.sparse.issparse(v):
-            # Make sure that we are using COO format (easy to handle)
-            if not scipy.sparse.isspmatrix_coo(v):
-                v = scipy.sparse.coo_matrix(v)
+    #         count += len(data)
 
-            # Construct list of [index, value] items,
-            # one for each non-zero element of the sparse vector
-            encoded_values = []
+    #     pipeline.execute()
+    #     return count
 
-            for k in range(v.data.size):
-                row_index = v.row[k]
-                value = v.data[k]
-                encoded_values.append([int(row_index), value])
+    # def store(self, buckets, attribute):
+    #     count = 0
+    #     pipeline = self.redis_object.pipeline(transaction=False)
+    #     for bucket_key, bucket_data in buckets.items():
+    #         key = self.key_prefix + bucket_key + '_' + attribute
+    #         pipeline.rpush(key, *map(json.dumps, bucket_data))
+    #         count += len(bucket_data)
 
-            val_dict['sparse'] = 1
-            val_dict['nonzeros'] = encoded_values
-            val_dict['dim'] = v.shape[0]
-        else:
-            # Make sure it is a 1d vector
-            v = numpy.reshape(v, v.shape[0])
-            val_dict['vector'] = v.tolist()
+    #     pipeline.execute()
+    #     return count
 
-        # Add data if set
-        if data:
-            val_dict['data'] = data
+    # def retrieve(self, bucket_keys, attribute):
+    #     pipeline = self.redis_object.pipeline(transaction=False)
+    #     for bucket_key in bucket_keys:
+    #         key = self.key_prefix + bucket_key + '_' + attribute
+    #         pipeline.lrange(key, 0, -1)
 
-        # Push JSON representation of dict to end of bucket list
-        self.redis_object.rpush(redis_key, json.dumps(val_dict))
+    #     results = pipeline.execute()
+    #     return map(lambda items: map(json.loads, items), results)
 
-    def get_bucket(self, hash_name, bucket_key):
-        """
-        Returns bucket content as list of tuples (vector, data).
-        """
-        redis_key = 'nearpy_%s_%s' % (hash_name, bucket_key)
-        items = self.redis_object.lrange(redis_key, 0, -1)
-        results = []
-        for item_str in items:
-            val_dict = json.loads(want_string(item_str))
+    def store(self, bucketkeys, prefix="", **bucketvalues):
+        #chunk_size = 100000
+        keys = [self.keyprefix + prefix + bucketkey for bucketkey in bucketkeys]
+        pipeline = self.redis_object.pipeline(transaction=False)
+        for attribute, values in bucketvalues.items():
+            for key, value in izip(keys, values):
+        #    for chunk_key, chunk_value in izip(chunk(keys, n=chunk_size), chunk(values, n=chunk_size)):
+        #        for key, value in izip(chunk_key, chunk_value):
+                pipeline.rpush(key + "_" + attribute, value)
 
-            # Depending on type (sparse or not) reconstruct vector
-            if 'sparse' in val_dict:
+        pipeline.execute()
 
-                # Fill these for COO creation
-                row  = []
-                col  = []
-                data = []
+        return len(bucketkeys)
 
-                # For each non-zero element, append values
-                for e in val_dict['nonzeros']:
-                    row.append(e[0]) # Row index
-                    data.append(e[1]) # Value
-                    col.append(0) # Column index (always 0)
+    def retrieve(self, bucketkeys, attribute, prefix=""):
+        keys = [self.keyprefix + prefix + bucketkey for bucketkey in bucketkeys]
+        pipeline = self.redis_object.pipeline(transaction=False)
+        for key in keys:
+            pipeline.lrange(key + '_' + attribute, 0, -1)
 
-                # Create numpy arrays for COO creation
-                coo_row = numpy.array(row, dtype=numpy.int32)
-                coo_col = numpy.array(col, dtype=numpy.int32)
-                coo_data = numpy.array(data)
-
-                # Create COO sparse vector
-                vector = scipy.sparse.coo_matrix( (coo_data,(coo_row,coo_col)), shape=(val_dict['dim'],1) )
-
-            else:
-                vector = numpy.fromiter(val_dict['vector'], dtype=numpy.float64)
-
-            # Add data to result tuple, if present
-            if 'data' in val_dict:
-                results.append((vector, val_dict['data']))
-            else:
-                results.append((vector, None))
-
+        results = pipeline.execute()
+        #return map(lambda items: map(json.loads, items), results)
         return results
 
-    def clean_buckets(self, hash_name):
+    def set_metadata(self, key, metadata):
+        for field, value in metadata.items():
+            self.redis_object.hsetnx(key, field, value)
+
+    def get_metadata(self, key):
+        return self.redis_object.hgetall(key)
+
+    def add_attribute(self, key, attribute):
+        return self.redis_object.sadd(key + "_attributes", attribute)
+
+    def get_attributes(self, key):
+        return self.redis_object.smembers(key + "_attributes")
+
+    def append_to_buckets_from_iter(self, bucket_keyvalues):
         """
-        Removes all buckets and their content for specified hash.
+        Parameters
+        ----------
+        bucket_keyvalues: iterable of tuples
+            key-value pairs (str, JSON serializable object)
+
+        Return
+        ------
+        count: int
+            number of elements added
         """
-        bucket_keys = self.redis_object.keys(pattern='nearpy_%s_*' % hash_name)
+        pipeline = self.redis_object.pipeline(transaction=False)
+        #import time
+        #start = time.time()
+        for count, (bucket_key, bucket_value) in enumerate(bucket_keyvalues, start=1):
+            key = 'nearpy_' + bucket_key
+            pipeline.rpush(key, json.dumps(bucket_value))
+            #pipeline.rpush(key, bucket_value)
+
+        #print "#{}, {:.2f} sec.".format(count, time.time()-start)
+
+        pipeline.execute()
+        return count
+
+    def retrieve2(self, bucket_keys):
+        """
+        Parameters
+        ----------
+        bucket_keys: iterable of string
+            keys from which to retrieve values
+
+        Return
+        ------
+        values: list of JSON serializable objects
+            values retrieved
+        """
+        single_key = False
+        if not isinstance(bucket_keys, types.ListType) and not isinstance(bucket_keys, types.GeneratorType):
+            single_key = True
+            bucket_keys = [bucket_keys]
+
+        pipeline = self.redis_object.pipeline(transaction=False)
         for bucket_key in bucket_keys:
-            self.redis_object.delete(bucket_key)
+            key = 'nearpy_' + bucket_key
+            pipeline.lrange(key, 0, -1)
 
-    def clean_all_buckets(self):
-        """
-        Removes all buckets from all hashes and their content.
-        """
-        bucket_keys = self.redis_object.keys(pattern='nearpy_*')
-        for bucket_key in bucket_keys:
-            self.redis_object.delete(bucket_key)
+        values = pipeline.execute()
+        if single_key:
+            return map(json.loads, values[0])
+            #return values[0]
 
-    def store_hash_configuration(self, lshash):
-        """
-        Stores hash configuration
-        """
-        self.redis_object.set(lshash.hash_name+'_conf', pickle.dumps(lshash.get_config()))
+        return [map(json.loads, value) for value in values]
+        #return values
 
-    def load_hash_configuration(self, hash_name):
+    def count(self, bucket_keys=[], prefix=None):
         """
-        Loads and returns hash configuration
-        """
-        return pickle.loads(self.redis_object.get(hash_name+'_conf'))
+        Parameters
+        ----------
+        bucket_keys: iterable of string
+            keys from which to retrieve values
+        prefix: string
+            if set, report counts of every buckets having this prefix
 
+        Return
+        ------
+        counts: list of int
+            size of each given bucket
+        """
+
+        single_key = False
+        pipeline = self.redis_object.pipeline(transaction=False)
+        if prefix is not None:
+            keys = self.redis_object.keys(pattern='nearpy_' + prefix + "*")
+            for key in keys:
+                pipeline.llen(key)
+
+        else:
+            if not isinstance(bucket_keys, types.ListType) and not isinstance(bucket_keys, types.GeneratorType):
+                single_key = True
+                bucket_keys = [bucket_keys]
+
+            for bucket_key in bucket_keys:
+                key = 'nearpy_' + bucket_key
+                pipeline.llen(key)
+
+        counts = pipeline.execute()
+
+        if single_key:
+            return counts[0]
+
+        return counts
+
+    def buckets_count(self, prefix):
+        """
+        Parameters
+        ----------
+        prefix: string
+            report buckets count having this prefix
+
+        Return
+        ------
+        count: int
+            number of buckets
+        """
+        return len(self.redis_object.keys(pattern='nearpy_' + prefix + "*"))
+
+    def clear(self, bucket_keys=[], prefix=None):
+        """
+        Parameters
+        ----------
+        bucket_keys: iterable of string
+            keys from which to retrieve values
+        prefix: string
+            if set, clear every buckets having this prefix
+
+        Return
+        ------
+        count: int
+            number of buckets cleared
+        """
+
+        pipeline = self.redis_object.pipeline(transaction=False)
+        if prefix is not None:
+            keys = self.redis_object.keys(pattern='nearpy_' + prefix + "*")
+            for key in keys:
+                pipeline.delete(key)
+
+        else:
+            if not isinstance(bucket_keys, types.ListType) and not isinstance(bucket_keys, types.GeneratorType):
+                bucket_keys = [bucket_keys]
+
+            for bucket_key in bucket_keys:
+                key = 'nearpy_' + bucket_key
+                pipeline.delete(key)
+
+        counts = pipeline.execute()
+        return sum(counts)
+
+    # def save(self):
+    #     try:
+    #         self.redis_object.save()
+    #     except ResponseError:
+    #         pass  # Saveing already in progress!

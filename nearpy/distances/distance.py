@@ -24,8 +24,11 @@
 class Distance(object):
     """ Interface for distance functions. """
 
-    def distance(self, x, y):
+    def __init__(self, attribute):
+        self.attribute = attribute
+
+    def __call__(self, query, patches):
         """
-        Computes distance measure between vectors x and y. Returns float.
+        Computes distance measure between a query patch and a list of patches. Returns float.
         """
         raise NotImplementedError

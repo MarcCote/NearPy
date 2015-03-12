@@ -21,8 +21,10 @@
 # THE SOFTWARE.
 
 import sys
+import json
 import numpy
-
+import numpy as np
+from itertools import islice
 
 
 def numpy_array_from_list_or_numpy_array(vectors):
@@ -49,9 +51,33 @@ def perform_pca(A):
     The rows of a correspond to observations, the columns to variables.
     """
     # First subtract the mean
-    M = (A-numpy.mean(A.T, axis=1)).T
+    M = (A-numpy.mean(A, axis=0)).T
     # Get eigenvectors and values of covariance matrix
     return numpy.linalg.eig(numpy.cov(M))
+
+
+def perform_online_pca(data, dimension=None):
+    if dimension is None:
+        dimension = data[0].shape
+
+    total = 0
+    mean = np.zeros(dimension, dtype=np.float64)
+    comoment = np.zeros((dimension, dimension), dtype=np.float64)
+
+    for element in data:
+        total += len(element)
+        last_mean = mean
+        mean = mean + np.sum(element - mean, axis=0, dtype=np.float64)/total
+        comoment += np.dot((element-mean).T, (element-last_mean))
+
+    cov = comoment / (total-1)
+
+    eigenvalues, eigenvectors = np.linalg.eig(cov)
+    ordered_idx = np.argsort(eigenvalues)[::-1]
+    eigenvalues = eigenvalues[ordered_idx]
+    eigenvectors = eigenvectors[:, ordered_idx]
+
+    return mean, (eigenvalues, eigenvectors)
 
 
 PY2 = sys.version_info[0] == 2
@@ -67,3 +93,28 @@ def want_string(arg, encoding='utf-8'):
     else:
         rv = arg
     return rv
+
+
+def chunk(sequence, n):
+    """ Yield successive n-sized chunks from sequence. """
+    for i in xrange(0, len(sequence), n):
+        yield sequence[i:i + n]
+
+
+def ichunk(sequence, n):
+    """ Yield successive n-sized chunks from sequence. """
+    sequence = iter(sequence)
+    chunk = list(islice(sequence, n))
+    while len(chunk) > 0:
+        yield chunk
+        chunk = list(islice(sequence, n))
+
+
+def load_dict_from_json(path):
+    with open(path, "r") as json_file:
+        return json.loads(json_file.read())
+
+
+def save_dict_to_json(path, dictionary):
+    with open(path, "w") as json_file:
+        json_file.write(json.dumps(dictionary, indent=4, separators=(',', ': ')))

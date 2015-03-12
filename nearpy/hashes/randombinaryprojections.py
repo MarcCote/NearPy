@@ -20,9 +20,8 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 
-import numpy
-import scipy
-import scipy.sparse
+import numpy as np
+from itertools import izip
 
 from nearpy.hashes.lshash import LSHash
 
@@ -36,7 +35,7 @@ class RandomBinaryProjections(LSHash):
     for storage.
     """
 
-    def __init__(self, hash_name, projection_count, rand_seed=None):
+    def __init__(self, name, projection_count, dimension, rand_seed=None):
         """
         Creates projection_count random vectors, that are used for projections
         thus working as normals of random hyperplanes. Each random vector /
@@ -45,60 +44,33 @@ class RandomBinaryProjections(LSHash):
         So if you for example decide to use projection_count=10, the bucket
         keys will have 10 digits and will look like '1010110011'.
         """
-        super(RandomBinaryProjections, self).__init__(hash_name)
+        super(RandomBinaryProjections, self).__init__(name)
         self.projection_count = projection_count
-        self.dim = None
-        self.normals = None
-        self.rand = numpy.random.RandomState(rand_seed)
-        self.normals_csr = None
+        self.dimension = dimension
+        self.rand = np.random.RandomState(rand_seed)
+        self.normals = self.rand.randn(self.projection_count, self.dimension).astype(np.float32)
 
-    def reset(self, dim):
-        """ Resets / Initializes the hash for the specified dimension. """
-        if self.dim != dim:
-            self.dim = dim
-            self.normals = self.rand.randn(self.projection_count, dim)
-
-    def hash_vector(self, v, querying=False):
+    def hash_vector(self, V, querying=False):
         """
         Hashes the vector and returns the binary bucket key as string.
         """
-        if scipy.sparse.issparse(v):
-            # If vector is sparse, make sure we have the CSR representation
-            # of the projection matrix
-            if self.normals_csr == None:
-                self.normals_csr = scipy.sparse.csr_matrix(self.normals)
-            # Make sure that we are using CSR format for multiplication
-            if not scipy.sparse.isspmatrix_csr(v):
-                v = scipy.sparse.csr_matrix(v)
-            # Project vector onto all hyperplane normals
-            projection = self.normals_csr.dot(v)
-        else:
-            # Project vector onto all hyperplane normals
-            projection = numpy.dot(self.normals, v)
-        # Return binary key
-        return [''.join(['1' if x > 0.0 else '0' for x in projection])]
+        projections = np.dot(V.reshape((-1, self.dimension)), self.normals.T)
 
-    def get_config(self):
+        # Return binary key as a string
+        projections = (projections > 0.0).astype(np.int8).astype('S1')
+        return [''.join(projection) for projection in projections]
+
+    def hash_vector_with_pos(self, V, positions, querying=False):
         """
-        Returns pickle-serializable configuration struct for storage.
+        Hashes the vector and returns the binary bucket key as string.
         """
-        # Fill this dict with config data
-        return {
-            'hash_name': self.hash_name,
-            'dim': self.dim,
-            'projection_count': self.projection_count,
-            'normals': self.normals
-        }
+        projections = np.dot(V.reshape((-1, self.dimension)), self.normals.T)
 
-    def apply_config(self, config):
-        """
-        Applies config
-        """
-        self.hash_name = config['hash_name']
-        self.dim = config['dim']
-        self.projection_count = config['projection_count']
-        self.normals = config['normals']
+        # Return binary key as a string
+        projections = (projections > 0.0).astype(np.int8).astype('S1')
+        return ["_".join(map(str, pos)) + "_" + ''.join(projection) for projection, pos in izip(projections, positions)]
 
-
-
-
+    def __str__(self):
+        text = ""
+        text += self.name + ": " + str(self.projection_count)
+        return text

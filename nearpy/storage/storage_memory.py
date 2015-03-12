@@ -1,84 +1,113 @@
-# -*- coding: utf-8 -*-
+import re
+import types
 
-# Copyright (c) 2013 Ole Krause-Sparmann
-
-# Permission is hereby granted, free of charge, to any person obtaining a copy
-# of this software and associated documentation files (the "Software"), to deal
-# in the Software without restriction, including without limitation the rights
-# -*- coding: utf-8 -*-
-
-# Copyright (c) 2013 Ole Krause-Sparmann
-
-# Permission is hereby granted, free of charge, to any person obtaining a copy
-# of this software and associated documentation files (the "Software"), to deal
-# in the Software without restriction, including without limitation the rights
-# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-# copies of the Software, and to permit persons to whom the Software is
-# furnished to do so, subject to the following conditions:
-
-# The above copyright notice and this permission notice shall be included in
-# all copies or substantial portions of the Software.
-
-# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-# THE SOFTWARE.
-
+from collections import defaultdict
+from itertools import izip
 from nearpy.storage.storage import Storage
 
 
 class MemoryStorage(Storage):
-    """ Simple implementation using python dicts. """
+    """ Storage in memory. """
 
-    def __init__(self):
-        self.buckets = {}
-        self.hash_configs = {}
+    def __init__(self, keyprefix=""):
+        self.infos = defaultdict(lambda: [])
+        self.buckets = defaultdict(lambda: [])
+        self.keyprefix = keyprefix
 
-    def store_vector(self, hash_name, bucket_key, v, data):
-        """
-        Stores vector and JSON-serializable data in bucket with specified key.
-        """
+    def get_info(self, key):
+        return self.infos[key]
 
-        if not hash_name in self.buckets:
-            self.buckets[hash_name] = {}
+    def set_info(self, key, value, append=False):
+        if append:
+            self.infos[key].append(value)
+        else:
+            self.infos[key] = value
 
-        if not bucket_key in self.buckets[hash_name]:
-            self.buckets[hash_name][bucket_key] = []
-        self.buckets[hash_name][bucket_key].append((v, data))
+    def del_info(self, key, value=None):
+        if value is not None:
+            self.infos[key].remove(value)
+        else:
+            del self.infos[key]
 
-    def get_bucket(self, hash_name, bucket_key):
-        """
-        Returns bucket content as list of tuples (vector, data).
-        """
-        if hash_name in self.buckets:
-            if bucket_key in self.buckets[hash_name]:
-                return self.buckets[hash_name][bucket_key]
-        return []
+    def store(self, bucketkeys, bucketvalues):
+        keys = [self.keyprefix + "_" + bucketkey for bucketkey in bucketkeys]
+        for attribute, values in bucketvalues.items():
+            for key, value in izip(keys, attribute.dumps(values)):
+                self.buckets[key + "_" + attribute.name].append(value)
 
-    def clean_buckets(self, hash_name):
-        """
-        Removes all buckets and their content for specified hash.
-        """
-        self.buckets[hash_name] = {}
+        return len(bucketkeys)
 
-    def clean_all_buckets(self):
-        """
-        Removes all buckets from all hashes and their content.
-        """
-        self.buckets = {}
+    def retrieve(self, bucketkeys, attribute):
+        keys = [self.keyprefix + "_" + bucketkey + '_' + attribute.name for bucketkey in bucketkeys]
+        results = [self.credis.execute("lrange", key, 0, -1) for key in keys]
+        return [attribute.loads("".join(result)) for result in results]
 
-    def store_hash_configuration(self, lshash):
+    def clear(self, bucketkeys):
         """
-        Stores hash configuration
-        """
-        self.hash_configs[lshash.hash_name] = lshash.get_config()
+        Parameters
+        ----------
+        bucket_keys: iterable of string
+            keys from which to retrieve values
+        prefix: string
+            if set, clear every buckets having this prefix
 
-    def load_hash_configuration(self, hash_name):
+        Return
+        ------
+        count: int
+            number of buckets cleared
         """
-        Loads and returns hash configuration
-        """
-        return self.hash_configs[hash_name]
+        if not isinstance(bucketkeys, types.ListType) and not isinstance(bucketkeys, types.GeneratorType):
+            bucketkeys = [bucketkeys]
 
+        count = 0
+        for bucketkey in bucketkeys:
+            key = self.keyprefix + "_" + bucketkey
+            if key in self.buckets:
+                del self.buckets[key]
+                count += 1
+
+        return count
+
+    def count(self, bucketkeys):
+        """
+        Parameters
+        ----------
+        bucketkeys: iterable of string
+            keys from which to retrieve values
+
+        Return
+        ------
+        counts: list of int
+            size of each given bucket
+        """
+        counts = []
+        suffix = "_patch"
+        for bucketkey in bucketkeys:
+            key = self.keyprefix + "_" + bucketkey + suffix
+            counts.append(len(self.buckets[key]))
+
+        return counts
+
+    def bucketkeys(self, pattern=".", as_generator=False):
+        suffix = "patch"
+        pattern = "{prefix}_{pattern}_{suffix}".format(prefix=self.keyprefix, pattern=pattern, suffix=suffix)
+        regex = re.compile(pattern)
+        start = len(self.keyprefix) + 1
+        end = -(len(suffix) + 1)
+
+        keys = (key[start:end] for key in self.buckets.keys() if regex.match(key) is not None)
+        if not as_generator:
+            keys = list(keys)
+
+        return keys
+
+    def bucketkeys_all_attributes(self, pattern=".", as_generator=False):
+        pattern = "{prefix}_{pattern}".format(prefix=self.keyprefix, pattern=pattern)
+        regex = re.compile(pattern)
+        start = len(self.keyprefix) + 1
+
+        keys = (key[start:] for key in self.buckets.keys() if regex.match(key) is not None)
+        if not as_generator:
+            keys = list(keys)
+
+        return keys

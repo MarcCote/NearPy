@@ -20,6 +20,7 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 
+import numpy as np
 from nearpy.filters.vectorfilter import VectorFilter
 
 
@@ -34,15 +35,8 @@ class NearestFilter(VectorFilter):
         """
         self.N = N
 
-    def filter_vectors(self, input_list):
+    def __call__(self, distances):
         """
         Returns subset of specified input list.
         """
-        try:
-            # Return filtered (vector, data, distance )tuple list. Will fail
-            # if input is list of (vector, data) tuples.
-            sorted_list = sorted(input_list, key=lambda x: x[2])
-            return sorted_list[:self.N]
-        except:
-            # Otherwise just return input list
-            return input_list
+        return np.argsort(distances)[:self.N]

@@ -20,13 +20,12 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 
-import numpy
-import scipy
-import scipy.sparse
+import pickle
+import numpy as np
+from itertools import izip
 
 from nearpy.hashes.lshash import LSHash
-
-from nearpy.utils import numpy_array_from_list_or_numpy_array, perform_pca
+from nearpy.utils import perform_online_pca
 
 
 class PCABinaryProjections(LSHash):
@@ -38,97 +37,46 @@ class PCABinaryProjections(LSHash):
     used as a bucket key for storage.
     """
 
-    def __init__(self, hash_name, projection_count, training_set):
-        """
-        Computes principal components for training vector set. Uses
-        first projection_count principal components for projections.
+    def __init__(self, name, dimension, trainset, nbits, pkl=None):
+        super(PCABinaryProjections, self).__init__(name)
+        self.dimension = dimension
+        self.nbits = nbits
 
-        Training set must be either a numpy matrix or a list of
-        numpy vectors.
-        """
-        super(PCABinaryProjections, self).__init__(hash_name)
-        self.projection_count = projection_count
-
-        # Only do training if training set was specified
-        if not training_set is None:
-            # Get numpy array representation of input
-            training_set = numpy_array_from_list_or_numpy_array(training_set)
-
-            # Get subspace size from training matrix
-            self.dim = training_set.shape[0]
-
-            # Get transposed training set matrix for PCA
-            training_set_t = numpy.transpose(training_set)
-
-            # Compute principal components
-            (eigenvalues, eigenvectors) = perform_pca(training_set_t)
-
-            # Get largest N eigenvalue/eigenvector indices
-            largest_eigenvalue_indices = numpy.flipud(
-                scipy.argsort(eigenvalues))[:projection_count]
-
-            # Create matrix for first N principal components
-            self.components = numpy.zeros((self.dim,
-                                           len(largest_eigenvalue_indices)))
-
-            # Put first N principal components into matrix
-            for index in range(len(largest_eigenvalue_indices)):
-                self.components[:, index] = \
-                    eigenvectors[:, largest_eigenvalue_indices[index]]
-
-            # We need the component vectors to be in the rows
-            self.components = numpy.transpose(self.components)
+        if pkl is not None:
+            self.mean, (self.eigenvalues, self.eigenvectors) = pickle.load(open(pkl))
         else:
-            self.dim = None
-            self.components = None
+            self.mean, (self.eigenvalues, self.eigenvectors) = perform_online_pca(trainset(), dimension)
+            pickle.dump((self.mean, (self.eigenvalues, self.eigenvectors)), open("pca.pkl", 'w'))
 
-        # This is only used in case we need to process sparse vectors
-        self.components_csr = None
+        #variance_explanation = np.cumsum(eigenvalues/eigenvalues.sum())
+        #self.projection_count = np.sum(variance_explanation <= max_explanation)
 
-    def reset(self, dim):
-        """ Resets / Initializes the hash for the specified dimension. """
-        if self.dim != dim:
-            raise Exception('PCA hash is trained for specific dimension!')
+        self.npca = min(self.nbits, self.dimension)  # Number of principal components to keep.
+        self.normals = self.eigenvectors.T[:self.npca]
 
-    def hash_vector(self, v, querying=False):
+    def hash_vector(self, V, querying=False):
         """
         Hashes the vector and returns the binary bucket key as string.
         """
-        if scipy.sparse.issparse(v):
-            # If vector is sparse, make sure we have the CSR representation
-            # of the projection matrix
-            if self.components_csr == None:
-                self.components_csr = scipy.sparse.csr_matrix(self.components)
-            # Make sure that we are using CSR format for multiplication
-            if not scipy.sparse.isspmatrix_csr(v):
-                v = scipy.sparse.csr_matrix(v)
-            # Project vector onto all hyperplane normals
-            projection = self.components_csr.dot(v).toarray()
-        else:
-            # Project vector onto all hyperplane normals
-            projection = numpy.dot(self.components, v)
-        # Return binary key
-        return [''.join(['1' if x > 0.0 else '0' for x in projection])]
+        projections = V.reshape((-1, self.dimension)) - self.mean
+        projections = np.dot(projections, self.normals.T)
 
-    def get_config(self):
-        """
-        Returns pickle-serializable configuration struct for storage.
-        """
-        # Fill this dict with config data
-        return {
-            'hash_name': self.hash_name,
-            'dim': self.dim,
-            'projection_count': self.projection_count,
-            'components': self.components
-        }
+        # Return binary key as a string
+        projections = (projections > 0.0).astype(np.int8).astype('S1')
+        return [''.join(projection) for projection in projections]
 
-    def apply_config(self, config):
+    def hash_vector_with_pos(self, V, positions, querying=False):
         """
-        Applies config
+        Hashes the vector and returns the binary bucket key as string.
         """
-        self.hash_name = config['hash_name']
-        self.dim = config['dim']
-        self.projection_count = config['projection_count']
-        self.components = config['components']
+        projections = V.reshape((-1, self.dimension)) - self.mean
+        projections = np.dot(projections, self.normals.T)
 
+        # Return binary key as a string
+        projections = (projections > 0.0).astype(np.int8).astype('S1')
+        return ["_".join(map(str, pos)) + "_" + ''.join(projection) for projection, pos in izip(projections, positions)]
 
+    def __str__(self):
+        text = ""
+        text += self.name + ": " + str(self.nbits)
+        return text

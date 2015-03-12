@@ -20,6 +20,7 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 
+import numpy as np
 from nearpy.filters.vectorfilter import VectorFilter
 
 
@@ -28,20 +29,14 @@ class DistanceThresholdFilter(VectorFilter):
     Rejects vectors with a distance over the threshold.
     """
 
-    def __init__(self, distance_threshold):
+    def __init__(self, threshold):
         """
         Keeps the distance threshold
         """
-        self.distance_threshold = distance_threshold
+        self.threshold = threshold
 
-    def filter_vectors(self, input_list):
+    def __call__(self, distances):
         """
         Returns subset of specified input list.
         """
-        try:
-            # Return filtered (vector, data, distance )tuple list. Will fail
-            # if input is list of (vector, data) tuples.
-            return [x for x in input_list if x[2] < self.distance_threshold]
-        except:
-            # Otherwise just return input list
-            return input_list
+        return np.where(distances < self.threshold)[0]
