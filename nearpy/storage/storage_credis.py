@@ -1,3 +1,4 @@
+import json
 import redis
 import credis
 import types
@@ -17,6 +18,44 @@ class CRedisStorage(Storage):
         self.credis = credis.Connection(host=host, port=port)
         self.redis = redis.Redis(host=host, port=port, db=db)
         self.keyprefix = keyprefix
+        self.infos_key = "infos"
+
+    @property
+    def infos(self):
+        data = self.redis.get(self.infos_key)
+        if data is None:
+            return {}
+
+        return json.loads(data)
+
+    @infos.setter
+    def infos(self, value):
+        self.redis.set(self.infos_key, json.dumps(value))
+
+    def get_info(self, key):
+        return self.infos.get(key, [])
+
+    def set_info(self, key, value, append=False):
+        infos = self.infos
+
+        if append:
+            if key not in infos:
+                infos[key] = []
+            infos[key].append(value)
+        else:
+            infos[key] = value
+
+        self.infos = infos
+
+    def del_info(self, key, value=None):
+        infos = self.infos
+
+        if value is not None:
+            infos[key].remove(value)
+        else:
+            del infos[key]
+
+        self.infos = infos
 
     def store(self, bucketkeys, bucketvalues):
         keys = [self.keyprefix + "_" + bucketkey for bucketkey in bucketkeys]

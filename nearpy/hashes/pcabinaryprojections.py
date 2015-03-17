@@ -39,6 +39,7 @@ class PCABinaryProjections(LSHash):
 
     def __init__(self, name, dimension, trainset, nbits, pkl=None):
         super(PCABinaryProjections, self).__init__(name)
+        self.version = 1
         self.dimension = dimension
         self.nbits = nbits
 
@@ -80,3 +81,9 @@ class PCABinaryProjections(LSHash):
         text = ""
         text += self.name + ": " + str(self.nbits)
         return text
+
+    def __setstate__(self, state):
+        self.__dict__.update(state)
+        if "version" not in state:  # < 1
+            if 'projection_count' in state:
+                self.nbits = state['projection_count']

@@ -62,11 +62,17 @@ class FileStorage(Storage):
                 filename = pjoin(self.buckets_dir, key + "_" + attribute.name + ".npy")
                 buf[filename].append(value)
 
-        print "buffering: {:.2f} ({:,} buckets)".format(time()-start, len(buf))
+        print "buffering: {:.2f} ({:,} buckets)".format(time()-start, len(buf)/len(bucketvalues))
 
         start = time()
         for filename, values in buf.items():
-            open(filename, 'ab').write("".join(values))
+            #with open(filename, 'ab', 1) as f:
+            #    f.write("".join(values))
+
+            data = ""
+            if os.path.isfile(filename):
+                data = open(filename, 'rb').read()
+            open(filename, 'wb').write(data + "".join(values))
 
         print "writing: {:.2f}".format(time()-start)
         return len(bucketkeys)
@@ -148,7 +154,7 @@ class FileStorage(Storage):
         extension = ".npy"
         pattern = "{pattern}{extension}".format(pattern=pattern, extension=extension)
         regex = re.compile(pattern)
-        end = -(len(extension) + 1)
+        end = -len(extension)
 
         filenames = os.listdir(self.buckets_dir)
         keys = (filename[:end] for filename in filenames if regex.match(filename) is not None)
