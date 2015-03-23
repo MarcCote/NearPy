@@ -22,8 +22,9 @@ class FileStorage(Storage):
         #self.keyprefix = keyprefix
 
         #Create repository structure
-        if not os.path.isdir(self.buckets_dir):
-            os.makedirs(self.buckets_dir)
+        if keyprefix != "":
+            if not os.path.isdir(self.buckets_dir):
+                os.makedirs(self.buckets_dir)
 
         if not os.path.isfile(self.infos_filename):
             save_dict_to_json(self.infos_filename, {})
@@ -66,8 +67,8 @@ class FileStorage(Storage):
 
         start = time()
         for filename, values in buf.items():
-            #with open(filename, 'ab', 1) as f:
-            #    f.write("".join(values))
+            # with open(filename, 'ab') as f:
+            #     f.write("".join(values))
 
             data = ""
             if os.path.isfile(filename):

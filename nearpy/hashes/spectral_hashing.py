@@ -22,7 +22,6 @@
 
 import pickle
 import numpy as np
-from time import time
 import nearpy.utils.utils as utils
 
 from nearpy.hashes import PCABinaryProjections
@@ -39,6 +38,8 @@ class SpectralHashing(PCABinaryProjections):
     """
     def __init__(self, name, bounds=None, *args, **kwargs):
         super(SpectralHashing, self).__init__(name, *args, **kwargs)
+
+        self.bits_to_int = np.array([np.uint(2**i) for i in range(self.nbits)])
 
         # Compute the bounding box's bounds of the data in PCA space
         if bounds is None:
@@ -115,28 +116,39 @@ class SpectralHashing(PCABinaryProjections):
         Hashes the vector and returns the binary bucket key as string.
         """
 
-        V = V.reshape((-1, self.dimension))
-        if self.hash_func is not None:
-            # Use GPU (~100x faster)
-            projections = []
-            for chunk in utils.chunk(V, 200000):
-                projections.append(self.hash_func(chunk))
+        #V = V.reshape((-1, self.dimension))
+        with utils.Timer("    Projecting"):
+            if self.hash_func is not None:
+                # Use GPU (~100x faster)
+                projections = []
+                for chunk in utils.chunk(V, 200000):
+                    projections.append(self.hash_func(chunk))
 
-            projections = np.concatenate(projections, axis=0)
-        else:
-            # Keep the first `self.npca` principal components.
-            proj = self.eigenvectors[:, :self.npca]
-            projV = np.dot(V, proj)[:, None, :]  # According to Weiss, no need to remove the mean.
+                projections = np.concatenate(projections, axis=0)
+            else:
+                # Keep the first `self.npca` principal components.
+                proj = self.eigenvectors[:, :self.npca]
+                projV = np.dot(V, proj)[:, None, :]  # According to Weiss, no need to remove the mean.
 
-            pi = np.float32(np.pi)
-            half_pi = np.float32(np.pi/2.)
-            omega0 = pi / (self.bounds[1] - self.bounds[0])
-            omegas = omega0 * self.modes
-            projections = np.prod(np.sin(omegas*(projV-self.bounds[0])+half_pi), axis=2)
+                pi = np.float32(np.pi)
+                half_pi = np.float32(np.pi/2.)
+                omega0 = pi / (self.bounds[1] - self.bounds[0])
+                omegas = omega0 * self.modes
+                projections = np.prod(np.sin(omegas*(projV-self.bounds[0])+half_pi), axis=2)
 
+        self.bits_to_int = np.array([np.uint(2**i) for i in range(self.nbits)])
         # Return binary key as a string
-        projections = (projections > 0.0).astype(np.int8).astype('S1')
-        return [''.join(projection) for projection in projections]
+        with utils.Timer("    Thresholding"):
+            #projections = (projections > 0.0).astype(np.int8).astype('S1')
+            projections = np.dot(projections > 0, self.bits_to_int)
+
+        with utils.Timer("    Stringifying"):
+            #projections = [''.join(projection) for projection in projections]
+            #projections = map(str, projections)
+            #projections = list(utils.chunk(projections.tostring(), projections.itemsize))
+            projections = projections.view("|S8")
+
+        return projections
 
     def __str__(self):
         text = ""

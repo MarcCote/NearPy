@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+from __future__ import print_function
 
 # Copyright (c) 2013 Ole Krause-Sparmann
 
@@ -30,7 +31,7 @@ from nearpy.filters import NearestFilter
 from nearpy.distances import EuclideanDistance
 from nearpy.storage import MemoryStorage
 from itertools import islice, izip, izip_longest, chain
-from nearpy.utils import chunk
+from nearpy.utils import chunk, Timer
 from nearpy.data import NumpyData
 from collections import defaultdict
 from time import time
@@ -114,41 +115,41 @@ class Engine(object):
         # if len(position) == 1:
         #     bucketkeys = lshash.hash_vector_with_pos(V, position[0])
         # else:
-        start = time()
-        bucketkeys = lshash.hash_vector(V)
-        print "hashing: {:.2f}".format(time()-start)
+        with Timer("  Hashing"):
+            bucketkeys = lshash.hash_vector(V)
 
-        data[NumpyData("patch", V.dtype, V.shape[1:])] = V
+        #data[NumpyData("patch", V.dtype, V.shape[1:])] = V
+        bucketkeys = list(chunk(bucketkeys.tostring(), bucketkeys.itemsize))
         self.storage.store(bucketkeys, data)
         return bucketkeys
 
-    def store_batch_with_pos(self, V, positions, data={}):
-        """
-        Parameters
-        ----------
-        V: iterable of ndarrays
-            each ndarray will be used to generate an hash key
-        data: iterable of JSON-serializable object
-            each datum will be stored in a bucket using the hash key
+    # def store_batch_with_pos(self, V, positions, data={}):
+    #     """
+    #     Parameters
+    #     ----------
+    #     V: iterable of ndarrays
+    #         each ndarray will be used to generate an hash key
+    #     data: iterable of JSON-serializable object
+    #         each datum will be stored in a bucket using the hash key
 
-        Returns
-        -------
-        count:
-            number of elements stored
-        """
-        lshash = self.lshashes[0]
-        print "Hashing codes..."
-        start = time()
-        bucketkeys = lshash.hash_vector_with_pos(V, positions)
-        print "Codes hashed in {:.2f} sec.".format(time()-start)
+    #     Returns
+    #     -------
+    #     count:
+    #         number of elements stored
+    #     """
+    #     lshash = self.lshashes[0]
+    #     print "Hashing codes..."
+    #     start = time()
+    #     bucketkeys = lshash.hash_vector_with_pos(V, positions)
+    #     print "Codes hashed in {:.2f} sec.".format(time()-start)
 
-        data[NumpyData("patch", V.dtype, V.shape[1:])] = V
+    #     data[NumpyData("patch", V.dtype, V.shape[1:])] = V
 
-        print "Storing..."
-        start = time()
-        self.storage.store(bucketkeys, data)
-        print "Stored in {:.2f} sec.".format(time()-start)
-        return bucketkeys
+    #     print "Storing..."
+    #     start = time()
+    #     self.storage.store(bucketkeys, data)
+    #     print "Stored in {:.2f} sec.".format(time()-start)
+    #     return bucketkeys
 
     def neighbors(self, v, *attributes):
         """
@@ -171,136 +172,71 @@ class Engine(object):
         neighbors = self.neighbors_batch(V, *attributes)
         return {k: v[0] for k, v in neighbors.items()}
 
-    def neighbors_batch(self, V, *attributes):
+    def neighbors_batch(self, V, patches, *attributes):
         if self.distance is not None:
             if self.distance.attribute not in attributes:
                 attributes += (self.distance.attribute,)
 
         start = time()
         lshash = self.lshashes[0]
-        bucketkeys = lshash.hash_vector(V)
-        print "Hashing: {:.2f}".format(time()-start)
+        with Timer("  Hashing"):
+            bucketkeys = lshash.hash_vector(V)
 
-        start = time()
-        # Fetch only buckets that are unique
-        bucketkeys, patch2bucket_indices = np.unique(bucketkeys, return_inverse=True)
-        bucket2patch_indices = defaultdict(lambda: [])
-        for i, idx in enumerate(patch2bucket_indices):
-            bucket2patch_indices[idx] += [i]
+        with Timer("  Uniquifying"):
+            # Fetch only buckets that are unique
+            unique_bucketkeys, patch2bucket_indices = np.unique(bucketkeys, return_inverse=True)
+            #unique_bucketkeys, patch2bucket_indices = np.unique(bucketkeys.view("int64"), return_inverse=True)
+            #unique_bucketkeys = unique_bucketkeys.view("|S8")
 
-        print "Uniquifying: {:.2f}".format(time()-start)
+            bucket2patch_indices = defaultdict(lambda: [])
+            for i, idx in enumerate(patch2bucket_indices):
+                bucket2patch_indices[idx] += [i]
 
-        #bucketcounts = np.array(self.storage.count(bucketkeys))
+        #bucketcounts = np.array(self.storage.count(unique_bucketkeys))
         #indices_sorted = np.argsort(bucketcounts)[::-1]
         #sorted_bucketcounts = bucketcounts[indices_sorted]
+
+        #import theano
+        #import theano.tensor as T
+        # Patches = theano.shared(np.zeros((1, 9), dtype="float32"))
+        # query = T.vector()
+        # distances = T.sqrt(T.mean((Patches - query) ** 2, axis=1))
+        # f_dist = theano.function([query], T.argsort(distances)[:100])
 
         neighborhood_filter = self.filters[0]
 
         buckets = {}
         start = time()
-        for i, bucketkey in enumerate(bucketkeys):
-            if i % 10 == 0:
-                print "{:,}/{:,} ({:.2f} sec.)".format(i, len(bucketkeys), time()-start)
+        for i, bucketkey in enumerate(chunk(unique_bucketkeys.tostring(), unique_bucketkeys.itemsize)):
+            if i % 100 == 0:
+                print("{:,}/{:,} ({:.2f} sec.)".format(i, len(unique_bucketkeys), time()-start))
                 start = time()
 
-            #start = time()
+            #with Timer("  Fetching"):
             for attribute in attributes:
                 buckets[attribute.name] = self.storage.retrieve([bucketkey], attribute)[0]
 
-            #print "\nFetching: {:.2f}".format(time()-start)
+            #Patches.set_value(buckets[self.distance.attribute.name].reshape((-1, 9)))
 
             #start_loop = time()
             for j, patch_id in enumerate(bucket2patch_indices[i]):
                 neighbors = {}
 
                 # Distance
-                neighbors['dist'] = self.distance(V[patch_id], buckets[self.distance.attribute.name])
-                #print "Distance: {:.2f}".format(time()-start)
+                #with Timer("    Distance "):
+                neighbors['dist'] = self.distance(patches[patch_id], buckets[self.distance.attribute.name])
 
                 # Filter
-                #start = time()
+                #with Timer("    Filtering"):
                 indices_to_keep = list(neighborhood_filter(neighbors['dist']))
+                #indices_to_keep = f_dist(patches[patch_id].flatten())
                 neighbors['dist'] = neighbors['dist'][indices_to_keep]
-                #print "Filterin: {:.2f}".format(time()-start)
 
                 for attribute in attributes:
                     neighbors[attribute.name] = buckets[attribute.name][indices_to_keep]
 
                 yield patch_id, neighbors
             #print "Looping:  {:.2f} ({} x {})".format(time()-start_loop, len(bucket2patch_indices[i]), len(buckets[self.distance.attribute.name]))
-
-
-        # nb_neighbors = 0
-        # start = 0
-        # end = 0
-        # while start < len(bucketcounts):
-        #     nb_neighbors = 0
-        #     while nb_neighbors < 50000:
-        #         end += 1
-        #         nb_neighbors += np.sum(sorted_bucketcounts[start:end])
-
-        #     bucket_indices = indices_sorted[start:end]
-        #     bucketkeys_part = bucketkeys[bucket_indices]
-
-        #     from time import time
-        #     start = time()
-        #     buckets = {}
-        #     neighbors = {}
-        #     for attribute in attributes:
-        #         neighbors[attribute.name] = []
-        #         buckets[attribute.name] = self.storage.retrieve(bucketkeys_part, attribute)
-
-        #     print "Fetched in", time() - start
-
-        #     for patch_id, idx in enumerate(patch2bucket_indices):
-        #         neighbors = {}
-        #         for attribute in attributes:
-        #             neighbors[attribute.name] = buckets[attribute.name][i][list(neighbors_indices[i])])
-
-        #         yield patch_id, neighbors[]
-
-
-        #     start = time()
-        #     if self.distance is not None:
-        #         neighbors['dist'] = []
-        #         for i, bucket_idx in enumerate(bucket_indices):
-        #             bucket_patches = buckets[self.distance.attribute.name][i]
-
-        #             for query_patch, idx in izip(V, patch2bucket_indices):
-        #                 if idx != bucket_idx:
-        #                     continue
-
-        #                 neighbors['dist'].append(self.distance(query_patch, bucket_patches))
-
-        #     print "Distance computed in", time() - start
-
-        #     neighbors_indices = []
-        #     for i, bucket_idx in enumerate(bucket_indices):
-        #         for idx in patch2bucket_indices:
-        #             if idx == bucket_idx:
-        #                 neighbors_indices.append(xrange(len(buckets[attributes[0].name][i])))
-
-        #     start = time()
-        #     for neighborhood_filter in self.filters:
-        #         for i, (neighbors_dist) in enumerate(neighbors["dist"]):
-        #             neighbors_to_keep = neighborhood_filter(neighbors_dist)
-        #             neighbors_indices[i] = neighbors_to_keep
-        #             neighbors["dist"][i] = neighbors_dist[neighbors_to_keep]
-
-        #     print "Filtered computed in", time() - start
-
-        #     for attribute in attributes:
-        #         for i, bucket_idx in enumerate(bucket_indices):
-        #             for patch_id, idx in enumerate(patch2bucket_indices):
-        #                 if idx == bucket_idx:
-        #                     neighbors[attribute.name].append(buckets[attribute.name][i][list(neighbors_indices[i])])
-
-        #     for patch_id, idx in enumerate(patch2bucket_indices):
-        #         neighbors = {}
-        #         for attribute in attributes:
-        #             neighbors[attribute.name] = buckets[attribute.name][i][list(neighbors_indices[i])])
-
-        #         yield patch_id, neighbors[]
 
     def neighbors_batch_with_pos(self, V, positions, radius, *attributes):
         if self.distance is not None:
@@ -327,7 +263,7 @@ class Engine(object):
         buckets = {}
         for i, bucketkey in enumerate(bucketkeys):
             if i % 1000 == 0:
-                print "{:,}/{:,}".format(i, len(bucketkeys))
+                print("{:,}/{:,}".format(i, len(bucketkeys)))
 
             for attribute in attributes:
                 buckets[attribute.name] = self.storage.retrieve([bucketkey], attribute)[0]
@@ -346,103 +282,6 @@ class Engine(object):
                     neighbors[attribute.name] = buckets[attribute.name][indices_to_keep]
 
                 yield patch_id % nb_query_patches, neighbors
-
-    # def neighbors_batch(self, V, *attributes):
-    #     lshash = self.lshashes[0]
-    #     bucketkeys = lshash.hash_vector(V)
-
-    #     # Fetch only buckets that are unique
-    #     bucketkeys, indices = np.unique(bucketkeys, return_inverse=True)
-
-    #     if self.distance is not None:
-    #         if self.distance.attribute not in attributes:
-    #             attributes += (self.distance.attribute,)
-
-    #     from time import time
-    #     start = time()
-    #     buckets = {}
-    #     neighbors = {}
-    #     for attribute in attributes:
-    #         neighbors[attribute.name] = []
-    #         buckets[attribute.name] = self.storage.retrieve(bucketkeys, attribute)
-
-    #     print "Fetched in", time() - start
-
-    #     start = time()
-    #     if self.distance is not None:
-    #         neighbors['dist'] = []
-    #         for i, (query_patch, idx) in enumerate(izip(V, indices)):
-    #             bucket_patches = buckets[self.distance.attribute.name][idx]
-    #             neighbors['dist'].append(self.distance(query_patch, bucket_patches))
-
-    #     print "Distance computed in", time() - start
-
-    #     neighbors_indices = [xrange(len(buckets[attributes[0].name][idx])) for idx in indices]
-
-    #     start = time()
-    #     for neighborhood_filter in self.filters:
-    #         for i, (neighbors_dist, idx) in enumerate(izip(neighbors["dist"], indices)):
-    #             neighbors_to_keep = neighborhood_filter(neighbors_dist)
-    #             neighbors_indices[i] = neighbors_to_keep
-    #             neighbors["dist"][i] = neighbors_dist[neighbors_to_keep]
-
-    #     print "Filtered computed in", time() - start
-
-    #     for attribute in attributes:
-    #         for i, idx in enumerate(indices):
-    #             neighbors[attribute.name].append(buckets[attribute.name][idx][list(neighbors_indices[i])])
-
-    #     return neighbors
-
-    def neighbors_batch_extended(self, V, min_neighbors=1, *attributes):
-        lshash = self.lshashes[0]
-        bucketkeys = lshash.hash_vector(V)
-
-        if self.distance is not None:
-            if self.distance.attribute not in attributes:
-                attributes += (self.distance.attribute,)
-
-        # neighbors = {}
-        # for attribute in attributes:
-        #     neighbors[attribute.name] = self.storage.retrieve(bucketkeys, attribute)
-
-        # for neighbors_patches in neighbors["patch"]:
-        #     if len(neighbors_patches) < min_neighbors:
-
-
-        # lshash = self.lshashes[0]
-        # bucketkeys = lshash.hash_vector(V)
-
-        # if self.distance is not None:
-        #     if self.distance.attribute not in attributes:
-        #         attributes += (self.distance.attribute,)
-
-        # neighbors = {}
-        # for attribute in attributes:
-        #     neighbors[attribute.name] = self.storage.retrieve(bucketkeys, attribute)
-
-        counts = np.array(self.storage.count(bucketkeys))
-        print np.sum(counts == 0)
-        from ipdb import set_trace as dbg
-        dbg()
-
-        for i in np.where(counts < min_neighbors)[0]:
-            for j in range(len(bucketkeys[i])):
-                key = bucketkeys[i]
-                key = key[:1] + str(1-int(key[j])) + key[j+1:]
-                if self.storage.count(bucketkeys)[0] > 0:
-                    bucketkeys[i] = key
-
-        counts2 = np.array(self.storage.count([bucketkey_prefix + key + "_patch" for key in hashkeys]))
-        print np.sum(counts2 == 0)
-
-        from ipdb import set_trace as dbg
-        dbg()
-        neighbors = {}
-        for attribute in attributes:
-            neighbors[attribute.name] = self.storage.retrieve(hashkeys, attribute, prefix=bucketkey_prefix)
-
-        return neighbors
 
     def candidate_count(self, v):
         """
@@ -498,16 +337,6 @@ class Engine(object):
         counts = self.storage.count(bucketkeys)
         return counts
 
-    # def targets_count(self):
-    #     lshash = self.lshashes[0]
-    #     return self.storage.retrieve("*", attribute="target", prefix=lshash.name + "_")
-    #     # attribute_metadata = self.storage.get_metadata(lshash.name + "_target")
-    #     # dtype = attribute_metadata['dtype']
-    #     # shape = (-1,) + eval(attribute_metadata['shape'])
-    #     # contents = self.storage.retrieve("*", attribute="target", prefix=lshash.name + "_")
-    #     # targets = np.frombuffer("".join(chain(*contents)), dtype).reshape(shape)
-    #     # return np.bincount(targets[:, 0])
-
     def buckets_size(self):
         bucketkeys = self.storage.bucketkeys()
         return self.storage.count(bucketkeys), bucketkeys
@@ -523,4 +352,4 @@ class Engine(object):
     def clean_all_buckets(self):
         """ Clears buckets in storage (removes all vectors and their data). """
         bucketkeys = self.storage.bucketkeys_all_attributes(as_generator=True)
-        return self.storage.clear(bucketkeys)
+        return self.storage.remove(bucketkeys)

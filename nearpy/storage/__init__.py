@@ -26,15 +26,19 @@ from nearpy.storage.storage_memory import MemoryStorage
 from nearpy.storage.storage_file import FileStorage
 from nearpy.storage.storage_redis import RedisStorage
 from nearpy.storage.storage_credis import CRedisStorage
+from nearpy.storage.storage_rocksdb import RocksDBStorage
 
 
 def storage_factory(name, keyprefix="", **kwargs):
     if name.lower() == "memory":
         return MemoryStorage(keyprefix=keyprefix)
     elif name.lower() == "file":
-        return FileStorage(keyprefix=keyprefix, dir=kwargs.get("dir", "./nearpy"))
+        return FileStorage(keyprefix=keyprefix, dir=kwargs.get("dir", "./db"))
     elif name.lower() == "redis":
         return CRedisStorage(keyprefix=keyprefix,
                              host=kwargs.get("host", "localhost"),
                              port=kwargs.get("port", 6379),
                              db=kwargs.get('db', 0))
+    elif name.lower() == "rocksdb":
+        return RocksDBStorage(name=keyprefix,
+                              root=kwargs.get("dir", "./db"))

@@ -20,6 +20,8 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 
+# import theano
+# import theano.tensor as T
 import numpy as np
 
 from nearpy.distances.distance import Distance
@@ -28,5 +30,17 @@ from nearpy.distances.distance import Distance
 class EuclideanDistance(Distance):
     """ Euclidean distance """
 
+    # def __init__(self, *args, **kwargs):
+    #     super(EuclideanDistance, self).__init__(*args, **kwargs)
+    #     patches = T.matrix()
+    #     query = T.vector()
+    #     distances = T.sqrt(T.mean((patches - query) ** 2, axis=1))
+    #     #self.dist = theano.function([patches, query], distances)
+
+    #     self.dist = theano.function([patches, query], T.argsort(distances)[:100])
+
+    #     theano.printing.pydotprint(self.dist)
+
     def __call__(self, query, patches):
         return np.sqrt(np.mean((patches - query) ** 2, axis=tuple(range(1, patches.ndim))))
+        #return self.dist(patches.reshape((-1, 9)), query.flatten())

@@ -1,29 +1,11 @@
 # -*- coding: utf-8 -*-
+from __future__ import print_function
 
-# Copyright (c) 2013 Ole Krause-Sparmann
-
-# Permission is hereby granted, free of charge, to any person obtaining a copy
-# of this software and associated documentation files (the "Software"), to deal
-# in the Software without restriction, including without limitation the rights
-# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-# copies of the Software, and to permit persons to whom the Software is
-# furnished to do so, subject to the following conditions:
-
-# The above copyright notice and this permission notice shall be included in
-# all copies or substantial portions of the Software.
-
-# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-# THE SOFTWARE.
-
-import sys
 import json
+import sys
 import numpy
 import numpy as np
+from time import time
 from itertools import islice
 
 
@@ -111,10 +93,29 @@ def ichunk(sequence, n):
 
 
 def load_dict_from_json(path):
-    with open(path, "r") as json_file:
-        return json.loads(json_file.read())
+    try:
+        with open(path, "r") as json_file:
+            return json.loads(json_file.read())
+    except:
+        print("infos.json is corrupted")
+
+    return {}
 
 
 def save_dict_to_json(path, dictionary):
+    data = json.dumps(dictionary, indent=4, separators=(',', ': '))
     with open(path, "w") as json_file:
-        json_file.write(json.dumps(dictionary, indent=4, separators=(',', ': ')))
+        json_file.write(data)
+
+
+class Timer():
+    def __init__(self, txt):
+        self.txt = txt
+
+    def __enter__(self):
+        self.start = time()
+        print(self.txt + "... ", end="")
+        sys.stdout.flush()
+
+    def __exit__(self, type, value, tb):
+        print("{:.2f} sec.".format(time()-self.start))

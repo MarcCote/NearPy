@@ -24,5 +24,8 @@ class NumpyData(Data):
         return chunk(data.tostring(), n=int(np.prod(self.shape)*self.dtype.itemsize))
 
     def loads(self, txt):
+        if txt is None:
+            txt = ""
+
         shape = (-1,) + self.shape
         return np.frombuffer(txt, self.dtype).reshape(shape)
