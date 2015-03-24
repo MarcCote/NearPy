@@ -51,7 +51,7 @@ class RocksDBStorage(Storage):
         options = rocksdb.Options()
         options.create_if_missing = True
         options.max_open_files = 500  # Default on Unix is ~1024
-        #options.compression = rocksdb.CompressionType.snappy_compression
+        options.compression = rocksdb.CompressionType.snappy_compression
         options.merge_operator = BucketMerger()
         options.prefix_extractor = AttributePrefix()
         self.db = rocksdb.DB(self.db_filename, options)

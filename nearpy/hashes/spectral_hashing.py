@@ -52,8 +52,8 @@ class SpectralHashing(PCABinaryProjections):
             # Find optimal bounds by going through a trainset.
             for V in kwargs['trainset']():
                 projV = np.dot(V, proj)  # According to Weiss, no need to remove the mean.
-                bounds[0] = np.minimum(bounds[0], np.min(projV, axis=0))
-                bounds[1] = np.maximum(bounds[1], np.max(projV, axis=0))
+                bounds[0] = np.minimum(bounds[0], np.min(projV, axis=0), keepdims=True)
+                bounds[1] = np.maximum(bounds[1], np.max(projV, axis=0), keepdims=True)
 
             pickle.dump(bounds, open('bounds.pkl', 'w'))
         else:
