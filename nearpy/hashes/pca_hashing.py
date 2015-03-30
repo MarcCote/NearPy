@@ -6,11 +6,11 @@ from itertools import izip
 
 import nearpy.utils.utils as utils
 
-from nearpy.hashes.lshash import LSHash
+from nearpy.hashes.hashing import Hashing
 from nearpy.utils import perform_online_pca
 
 
-class PCAHashing(LSHash):
+class PCAHashing(Hashing):
     """
     Projects a vector on n first principal components and assigns
     a binary value to each projection depending on the sign. This
@@ -22,11 +22,7 @@ class PCAHashing(LSHash):
     def __init__(self, name, dimension, trainset, nbits, pca_pkl=None):
         super(PCAHashing, self).__init__(name)
         self.dimension = dimension
-        self.nbits = nbits
         self.npca = min(self.nbits, self.dimension)  # Number of principal components to keep.
-
-        # It is more efficient to store uint than bitcodes represented as string.
-        self.bits_to_int = np.array([np.uint(2**i) for i in range(self.nbits)])
 
         if pca_pkl is not None:
             self.mean, (self.eigenvalues, self.eigenvectors) = pickle.load(open(pca_pkl))
@@ -98,13 +94,13 @@ class PCAHashing(LSHash):
         return text
 
     def __getstate__(self):
-        state = {}
-        state.update(self.__dict__)
+        state = super(PCAHashing, self).__getstate__()
         state["PCAHashing_version"] = 1
         return state
 
     def __setstate__(self, state):
-        self.__dict__.update(state)
+        super(PCAHashing, self).__setstate__(state)
+
         if "PCAHashing_version" not in state:
             if 'projection_count' in state:
                 self.nbits = state['projection_count']

@@ -1,13 +1,12 @@
 # -*- coding: utf-8 -*-
 
 import numpy as np
-from itertools import izip
 
 import nearpy.utils.utils as utils
-from nearpy.hashes.lshash import LSHash
+from nearpy.hashes.hashing import Hashing
 
 
-class LocalitySensitiveHashing(LSHash):
+class LocalitySensitiveHashing(Hashing):
     """
     Projects a vector on n random hyperplane normals and assigns
     a binary value to each projection depending on the sign. This
@@ -17,9 +16,8 @@ class LocalitySensitiveHashing(LSHash):
     """
 
     def __init__(self, name, dimension, nbits, rand_seed=None):
-        super(LocalitySensitiveHashing, self).__init__(name)
+        super(LocalitySensitiveHashing, self).__init__(name, nbits)
         self.dimension = dimension
-        self.nbits = nbits
         self.rand = np.random.RandomState(rand_seed)
         self.normals = self.rand.randn(self.dimension, self.nbits).astype(np.float32)
 
