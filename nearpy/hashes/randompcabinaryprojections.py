@@ -37,7 +37,7 @@ class RandomPCABinaryProjections(LSHash):
     used as a bucket key for storage.
     """
 
-    def __init__(self, name, projection_count, dimension, trainset, rand_seed=None, pkl=None):
+    def __init__(self, name, projection_count, dimension, trainset, rand_seed=None, pca_pkl=None):
         """
         Creates projection_count random vectors, that are used for projections
         thus working as normals of random hyperplanes. Each random vector /
@@ -56,8 +56,8 @@ class RandomPCABinaryProjections(LSHash):
         self.dimension = dimension
         self.projection_count = dimension if projection_count is None else projection_count
 
-        if pkl is not None:
-            self.mean, (self.eigenvalues, self.eigenvectors) = pickle.load(open(pkl))
+        if pca_pkl is not None:
+            self.mean, (self.eigenvalues, self.eigenvectors) = pickle.load(open(pca_pkl))
         else:
             self.mean, (self.eigenvalues, self.eigenvectors) = perform_online_pca(trainset, dimension)
             #variance_explanation = np.cumsum(eigenvalues/eigenvalues.sum())

@@ -21,18 +21,18 @@ from __future__ import print_function
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 
-import json
-import itertools
-import collections
+# import json
+# import itertools
+# import collections
 import numpy as np
 
-from nearpy.hashes import RandomBinaryProjections
-from nearpy.filters import NearestFilter
-from nearpy.distances import EuclideanDistance
+#from nearpy.hashes import RandomBinaryProjections
+#from nearpy.filters import NearestFilter
+#from nearpy.distances import EuclideanDistance
 from nearpy.storage import MemoryStorage
-from itertools import islice, izip, izip_longest, chain
+#from itertools import islice, izip, izip_longest, chain
 from nearpy.utils import chunk, Timer
-from nearpy.data import NumpyData
+#from nearpy.data import NumpyData
 from collections import defaultdict
 from time import time
 
@@ -208,7 +208,7 @@ class Engine(object):
         buckets = {}
         start = time()
         for i, bucketkey in enumerate(chunk(unique_bucketkeys.tostring(), unique_bucketkeys.itemsize)):
-            if i % 100 == 0:
+            if i % 1000 == 0:
                 print("{:,}/{:,} ({:.2f} sec.)".format(i, len(unique_bucketkeys), time()-start))
                 start = time()
 
