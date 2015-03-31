@@ -2,7 +2,6 @@ import re
 import types
 
 import os
-import numpy as np
 from time import time
 
 from collections import defaultdict
@@ -15,14 +14,16 @@ from nearpy.utils.utils import load_dict_from_json, save_dict_to_json
 class FileStorage(Storage):
     """ Storage using files and folders. """
 
-    def __init__(self, dir="./", keyprefix=""):
-        self.dir = dir
-        self.infos_filename = pjoin(dir, "infos.json")
-        self.buckets_dir = pjoin(dir, keyprefix)
-        #self.keyprefix = keyprefix
+    def __init__(self, name, root="./"):
+        self.root = root
+        self.infos_filename = pjoin(root, "infos.json")
 
         #Create repository structure
-        if keyprefix != "":
+        if not os.path.isdir(root):
+            os.makedirs(root)
+
+        if name != "":
+            self.buckets_dir = pjoin(root, name)
             if not os.path.isdir(self.buckets_dir):
                 os.makedirs(self.buckets_dir)
 

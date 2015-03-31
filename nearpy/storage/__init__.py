@@ -8,8 +8,8 @@ def storage_factory(name, keyprefix="", **kwargs):
         storage = MemoryStorage(keyprefix=keyprefix)
     elif name.lower() == "file":
         from nearpy.storage.storage_file import FileStorage
-        storage = FileStorage(keyprefix=keyprefix,
-                              dir=kwargs.get("dir", "./db"))
+        storage = FileStorage(name=keyprefix,
+                              root=kwargs.get("dir", "./db"))
     elif name.lower() == "redis":
         from nearpy.storage.storage_credis import CRedisStorage
         storage = CRedisStorage(keyprefix=keyprefix,
