@@ -6,6 +6,7 @@ import shutil
 import rocksdb
 import os
 
+from collections import defaultdict
 from itertools import izip, takewhile
 from nearpy.storage.storage import Storage
 from os.path import join as pjoin
@@ -54,15 +55,22 @@ class RocksDBStorage(Storage):
         options.compression = rocksdb.CompressionType.snappy_compression
         options.merge_operator = BucketMerger()
         options.prefix_extractor = AttributePrefix()
-        self.db = rocksdb.DB(self.db_filename, options)
+
+        with Timer("Opening RocksDB: {}".format(name)):
+            self.db = rocksdb.DB(self.db_filename, options)
 
     def store(self, bucketkeys, bucketvalues):
-        batch = rocksdb.WriteBatch()
-        with Timer("  Batching"):
+        buckets = defaultdict(lambda: [])
+        with Timer("  Bucketing"):
             for attribute, values in bucketvalues.items():
                 prefix = str(attribute.name.ljust(PREFIX_LENGTH) + b":")
                 for key, value in izip(bucketkeys, attribute.dumps(values)):
-                    batch.merge(prefix + key, value)
+                    buckets[prefix + key].append(value)
+
+        batch = rocksdb.WriteBatch()
+        with Timer("  Batching"):
+            for key, value in buckets.items():
+                batch.merge(key, b"".join(value))
 
         with Timer("  Writing"):
             self.db.write(batch, sync=True)

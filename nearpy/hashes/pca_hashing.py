@@ -20,7 +20,7 @@ class PCAHashing(Hashing):
     """
 
     def __init__(self, name, dimension, trainset, nbits, pca_pkl=None):
-        super(PCAHashing, self).__init__(name)
+        super(PCAHashing, self).__init__(name, nbits)
         self.dimension = dimension
         self.npca = min(self.nbits, self.dimension)  # Number of principal components to keep.
 
