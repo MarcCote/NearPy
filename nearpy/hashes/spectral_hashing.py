@@ -69,6 +69,7 @@ class SpectralHashing(PCAHashing):
     def _build_hash_function(self):
         import theano
         import theano.tensor as T
+        assert theano.config.device == "gpu"
 
         # Make sure everything is in float32 (i.e. GPU compatible)
         modes = self.modes.astype(np.float32)
