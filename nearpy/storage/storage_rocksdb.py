@@ -117,7 +117,7 @@ class RocksDBStorage(Storage):
 
         return count
 
-    def count(self, bucketkeys):
+    def count(self, bucketkeys=None):
         """
         Parameters
         ----------
@@ -129,15 +129,23 @@ class RocksDBStorage(Storage):
         counts: list of int
             size of each given bucket
         """
-        prefix = "label".ljust(PREFIX_LENGTH) + b":"
+        prefix = str("label".ljust(PREFIX_LENGTH) + b":")
         counts = []
 
         items = self.db.iteritems()
         items.seek(prefix)
         items = takewhile(lambda e: e[0].startswith(prefix), items)
 
-        for k, v in items:
-            counts.append(len(v))  # We suppose each label fits in a byte.
+        if bucketkeys is None:  # Count every buckets
+            for k, v in items:
+                counts.append(len(v))  # We suppose each label fits in a byte.
+        else:
+            keys = [prefix + bucketkey for bucketkey in bucketkeys]
+            results = self.db.multi_get(keys)
+            for v in results.values():
+                # We suppose each label fits in a byte.
+                count = len(v) if v is not None else 0
+                counts.append(count)
 
         return counts
 

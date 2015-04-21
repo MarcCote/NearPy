@@ -29,14 +29,14 @@ class NearestFilter(VectorFilter):
     Sorts vectors with respect to distance and returns the N nearest.
     """
 
-    def __init__(self, N):
+    def __init__(self, K):
         """
         Keeps the count threshold.
         """
-        self.N = N
+        self.K = K
 
     def __call__(self, distances):
         """
         Returns subset of specified input list.
         """
-        return np.argsort(distances)[:self.N]
+        return np.argsort(distances)[:self.K]

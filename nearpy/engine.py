@@ -17,6 +17,10 @@ from collections import defaultdict
 from time import time
 
 
+def flip(bits, no_bit):
+    return np.bitwise_xor(np.uint64(bits), np.left_shift(np.uint64(1), np.uint64(no_bit)))
+
+
 class Engine(object):
     """
     Objects with this type perform the actual ANN search and vector indexing.
@@ -172,7 +176,11 @@ class Engine(object):
             for i, idx in enumerate(patch2bucket_indices):
                 bucket2patch_indices[idx] += [i]
 
-        #bucketcounts = np.array(self.storage.count(unique_bucketkeys))
+        # with Timer("  Counting"):
+        #     bucketcounts = np.array(self.storage.count(unique_bucketkeys))
+
+        # indices_sorted = np.argsort(bucketcounts)[::-1]
+        # sorted_bucketcounts = bucketcounts[indices_sorted]
         #indices_sorted = np.argsort(bucketcounts)[::-1]
         #sorted_bucketcounts = bucketcounts[indices_sorted]
 
@@ -196,8 +204,26 @@ class Engine(object):
             for attribute in attributes:
                 buckets[attribute.name] = self.storage.retrieve([bucketkey], attribute)[0]
 
-            #Patches.set_value(buckets[self.distance.attribute.name].reshape((-1, 9)))
+            # TODO: Generalize to more than one bit flipping
+            # Check if we have enough neighbors
+            # no_bit = 0
+            # while len(buckets[self.distance.attribute.name]) < neighborhood_filter.K and no_bit < lshash.nbits:
+            #     print("Flipping bit:", no_bit)
+            #     newkey = flip(np.fromstring(bucketkey, dtype=np.uint64), no_bit).tostring()
+            #     for attribute in attributes:
+            #         buckets[attribute.name] = np.r_[buckets[attribute.name],
+            #                                         self.storage.retrieve([newkey], attribute)[0]]
+            #     no_bit += 1
 
+            #with Timer("  SubFetching"):
+            if len(buckets[self.distance.attribute.name]) < neighborhood_filter.K:
+                newkeys_str = flip(np.fromstring(bucketkey, dtype=np.uint64), range(lshash.nbits)).tostring()
+                newkeys = list(chunk(newkeys_str, unique_bucketkeys.itemsize))
+
+                for attribute in attributes:
+                    buckets[attribute.name] = np.vstack([buckets[attribute.name]] + self.storage.retrieve(newkeys, attribute))
+
+            #Patches.set_value(buckets[self.distance.attribute.name].reshape((-1, 9)))
             #start_loop = time()
             for j, patch_id in enumerate(bucket2patch_indices[i]):
                 neighbors = {}
