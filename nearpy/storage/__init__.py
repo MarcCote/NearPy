@@ -19,7 +19,8 @@ def storage_factory(name, keyprefix="", **kwargs):
     elif name.lower() == "rocksdb":
         from nearpy.storage.storage_rocksdb import RocksDBStorage
         storage = RocksDBStorage(name=keyprefix,
-                                 root=kwargs.get("dir", "./db"))
+                                 root=kwargs.get("dir", "./db"),
+                                 readonly=kwargs.get("readonly", False))
     else:
         raise ValueError("Unknown storage: {}".format(name))
 

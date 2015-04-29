@@ -215,7 +215,7 @@ class Engine(object):
             #                                         self.storage.retrieve([newkey], attribute)[0]]
             #     no_bit += 1
 
-            #with Timer("  SubFetching"):
+            #with Timer("  Checking bucket's neighbors"):
             if len(buckets[self.distance.attribute.name]) < neighborhood_filter.K:
                 newkeys_str = flip(np.fromstring(bucketkey, dtype=np.uint64), range(lshash.nbits)).tostring()
                 newkeys = list(chunk(newkeys_str, unique_bucketkeys.itemsize))

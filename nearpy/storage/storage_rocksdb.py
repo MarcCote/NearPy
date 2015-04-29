@@ -42,7 +42,7 @@ class AttributePrefix(rocksdb.interfaces.SliceTransform):
 class RocksDBStorage(Storage):
     """ Storage using RocksDB. """
 
-    def __init__(self, name, root="./"):
+    def __init__(self, name, root="./", readonly=False):
         self.db_filename = pjoin(root, name)
 
         #Create repository structure
@@ -57,7 +57,7 @@ class RocksDBStorage(Storage):
         options.prefix_extractor = AttributePrefix()
 
         with Timer("Opening RocksDB: {}".format(name)):
-            self.db = rocksdb.DB(self.db_filename, options)
+            self.db = rocksdb.DB(self.db_filename, options, read_only=readonly)
 
     def store(self, bucketkeys, bucketvalues):
         buckets = defaultdict(lambda: [])
