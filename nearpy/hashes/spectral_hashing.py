@@ -69,7 +69,6 @@ class SpectralHashing(PCAHashing):
     def _build_hash_function(self):
         import theano
         import theano.tensor as T
-        assert theano.config.device == "gpu"
 
         # Make sure everything is in float32 (i.e. GPU compatible)
         modes = self.modes.astype(np.float32)
@@ -97,6 +96,7 @@ class SpectralHashing(PCAHashing):
         with utils.Timer("    Projecting"):
             if self.hash_func is not None:
                 # Use GPU (~100x faster)
+                # or theano CPU (~10x faster)
                 projections = []
                 for chunk in utils.chunk(V, 200000):
                     projections.append(self.hash_func(chunk))
