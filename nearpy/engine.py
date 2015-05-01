@@ -163,6 +163,8 @@ class Engine(object):
 
         start = time()
         lshash = self.lshashes[0]
+        nbits_range = range(lshash.nbits)
+
         with Timer("  Hashing"):
             bucketkeys = lshash.hash_vector(V)
 
@@ -217,7 +219,7 @@ class Engine(object):
 
             #with Timer("  Checking bucket's neighbors"):
             if len(buckets[self.distance.attribute.name]) < neighborhood_filter.K:
-                newkeys_str = flip(np.fromstring(bucketkey, dtype=np.uint64), range(lshash.nbits)).tostring()
+                newkeys_str = flip(np.fromstring(bucketkey, dtype=np.uint64), nbits_range).tostring()
                 newkeys = list(chunk(newkeys_str, unique_bucketkeys.itemsize))
 
                 for attribute in attributes:
