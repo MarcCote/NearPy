@@ -193,7 +193,7 @@ class Engine(object):
         # distances = T.sqrt(T.mean((Patches - query) ** 2, axis=1))
         # f_dist = theano.function([query], T.argsort(distances)[:100])
 
-        neighborhood_filter = self.filters[0]
+        min_nb_neighbours = max([f.K for f in self.filters if hasattr(f, "K")])
 
         buckets = {}
         start = time()
@@ -207,18 +207,8 @@ class Engine(object):
                 buckets[attribute.name] = self.storage.retrieve([bucketkey], attribute)[0]
 
             # TODO: Generalize to more than one bit flipping
-            # Check if we have enough neighbors
-            # no_bit = 0
-            # while len(buckets[self.distance.attribute.name]) < neighborhood_filter.K and no_bit < lshash.nbits:
-            #     print("Flipping bit:", no_bit)
-            #     newkey = flip(np.fromstring(bucketkey, dtype=np.uint64), no_bit).tostring()
-            #     for attribute in attributes:
-            #         buckets[attribute.name] = np.r_[buckets[attribute.name],
-            #                                         self.storage.retrieve([newkey], attribute)[0]]
-            #     no_bit += 1
-
             #with Timer("  Checking bucket's neighbors"):
-            if len(buckets[self.distance.attribute.name]) < neighborhood_filter.K:
+            if len(buckets[self.distance.attribute.name]) < min_nb_neighbours:
                 newkeys_str = flip(np.fromstring(bucketkey, dtype=np.uint64), nbits_range).tostring()
                 newkeys = list(chunk(newkeys_str, unique_bucketkeys.itemsize))
 
@@ -234,14 +224,15 @@ class Engine(object):
                 #with Timer("    Distance "):
                 neighbors['dist'] = self.distance(patches[patch_id], buckets[self.distance.attribute.name])
 
-                # Filter
-                #with Timer("    Filtering"):
-                indices_to_keep = list(neighborhood_filter(neighbors['dist']))
-                #indices_to_keep = f_dist(patches[patch_id].flatten())
-                neighbors['dist'] = neighbors['dist'][indices_to_keep]
+                # Apply filters
+                for f in self.filters:
+                    #with Timer("    Filtering"):
+                    indices_to_keep = list(f(neighbors['dist']))
+                    #indices_to_keep = f_dist(patches[patch_id].flatten())
+                    neighbors['dist'] = neighbors['dist'][indices_to_keep]
 
-                for attribute in attributes:
-                    neighbors[attribute.name] = buckets[attribute.name][indices_to_keep]
+                    for attribute in attributes:
+                        neighbors[attribute.name] = buckets[attribute.name][indices_to_keep]
 
                 yield patch_id, neighbors
             #print "Looping:  {:.2f} ({} x {})".format(time()-start_loop, len(bucket2patch_indices[i]), len(buckets[self.distance.attribute.name]))

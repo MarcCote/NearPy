@@ -98,7 +98,7 @@ class SpectralHashing(PCAHashing):
                 # Use GPU (~100x faster)
                 # or theano CPU (~10x faster)
                 projections = []
-                for chunk in utils.chunk(V, 200000):
+                for chunk in utils.chunk(V, 100000):
                     projections.append(self.hash_func(chunk))
 
                 projections = np.concatenate(projections, axis=0)

@@ -25,3 +25,4 @@ from nearpy.filters.vectorfilter import VectorFilter
 from nearpy.filters.distancethresholdfilter import DistanceThresholdFilter
 from nearpy.filters.nearestfilter import NearestFilter
 from nearpy.filters.uniquefilter import UniqueFilter
+from nearpy.filters.sortedfilter import SortedFilter
