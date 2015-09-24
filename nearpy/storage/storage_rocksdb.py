@@ -83,7 +83,7 @@ class RocksDBStorage(Storage):
 
         #with Timer("  Retrieving"):
         results = self.db.multi_get(keys)
-        return [attribute.loads(result) for result in results.values()]
+        return [attribute.loads(results[key]) for key in keys]
 
     def remove(self, bucketkeys):
         """
@@ -142,9 +142,9 @@ class RocksDBStorage(Storage):
         else:
             keys = [prefix + bucketkey for bucketkey in bucketkeys]
             results = self.db.multi_get(keys)
-            for v in results.values():
+            for key in keys:
                 # We suppose each label fits in a byte.
-                count = len(v) if v is not None else 0
+                count = len(results[key]) if results[key] is not None else 0
                 counts.append(count)
 
         return counts
