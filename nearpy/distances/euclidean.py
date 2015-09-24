@@ -43,4 +43,5 @@ class EuclideanDistance(Distance):
 
     def __call__(self, query, patches):
         return np.sqrt(np.mean((patches - query) ** 2, axis=tuple(range(1, patches.ndim))))
+        #return np.sqrt(np.sum((patches - query) ** 2, axis=tuple(range(1, patches.ndim))))
         #return self.dist(patches.reshape((-1, 9)), query.flatten())

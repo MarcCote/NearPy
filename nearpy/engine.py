@@ -225,14 +225,19 @@ class Engine(object):
                 neighbors['dist'] = self.distance(patches[patch_id], buckets[self.distance.attribute.name])
 
                 # Apply filters
-                for f in self.filters:
+                for k, f in enumerate(self.filters):
                     #with Timer("    Filtering"):
                     indices_to_keep = list(f(neighbors['dist']))
                     #indices_to_keep = f_dist(patches[patch_id].flatten())
                     neighbors['dist'] = neighbors['dist'][indices_to_keep]
 
                     for attribute in attributes:
-                        neighbors[attribute.name] = buckets[attribute.name][indices_to_keep]
+                        # If the it's the first filter we take our data from the bucket.
+                        # Otherwise, we use the previously filtered neighbours.
+                        if k == 0:
+                            neighbors[attribute.name] = buckets[attribute.name][indices_to_keep]
+                        else:
+                            neighbors[attribute.name] = neighbors[attribute.name][indices_to_keep]
 
                 yield patch_id, neighbors
             #print "Looping:  {:.2f} ({} x {})".format(time()-start_loop, len(bucket2patch_indices[i]), len(buckets[self.distance.attribute.name]))
